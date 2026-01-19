@@ -102,7 +102,7 @@ python3 split_json_by_slide.py <group_number> \
 
 ### pptx_shapes_to_svg_positions.py
 
-This script reads PowerPoint (.pptx) files and exports shape positions into an Excel file.
+This script reads PowerPoint (.pptx) files and exports shape positions into an CSV files.
 
 For each shape on each slide, it computes:
 
