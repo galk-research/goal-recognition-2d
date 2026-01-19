@@ -13,15 +13,15 @@ project_root/
 ├── raw/
 │   ├── all_groups.json
 │   └── pptx/
-│       └── group 8 - Similarity + Continuation.pptx
+│       └── group NN - Similarity + Continuation.pptx
 │
 ├── groups/
-│   └── group08.json
+│   └── groupNN.json
 │
 ├── slides/
-│   └── group08/
-│       ├── svg-group08_slide01.json
-│       ├── svg-group08_slide02.json
+│   └── group0x/
+│       ├── svg-groupNN_slide01.json
+│       ├── svg-groupNN_slide02.json
 │       └── ...
 │
 ├── shapes/
@@ -29,12 +29,12 @@ project_root/
 │
 ├── lines/
 │   └── motion_lines_metrics_csv/
-│       ├── svg-group08_slide01.csv
+│       ├── svg-groupNN_slide01.csv
 │       └── ...
 │
 ├── distances/
 │   └── csv_location_and_distances/
-│       ├── svg-group08_slide01.csv
+│       ├── svg-groupNN_slide01.csv
 │       └── ...
 │
 ├── results/
@@ -183,7 +183,7 @@ For every slide in a folder of JSON files:
 python3 computeDistanceFromAllObj.py /path/to/json_folder \
     -o csv_location_and_distances \
     --centers-csv /path/to/pptx_shapes_positions_csv \
-    --pptx-name "group 8 - Similarity + Continuation.pptx" \
+    --pptx-name "group NN - Similarity + Continuation.pptx" \
     --exclude-shapes "Oval 8"
 ```
 
