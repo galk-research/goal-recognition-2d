@@ -5,49 +5,6 @@ The pipeline extracts per-group and per-slide data, computes spatial and motion-
 
 ---
 
-## Recommended Folder Structure
-
-```text
-project_root/
-│
-├── raw/
-│   ├── all_groups.json
-│   └── pptx/
-│       └── group NN - Similarity + Continuation.pptx
-│
-├── groups/
-│   └── groupNN.json
-│
-├── slides/
-│   └── group0x/
-│       ├── svg-groupNN_slide01.json
-│       ├── svg-groupNN_slide02.json
-│       └── ...
-│
-├── shapes/
-│   └── pptx_shapes_positions.xlsx
-│
-├── lines/
-│   └── motion_lines_metrics_csv/
-│       ├── svg-groupNN_slide01.csv
-│       └── ...
-│
-├── distances/
-│   └── csv_location_and_distances/
-│       ├── svg-groupNN_slide01.csv
-│       └── ...
-│
-├── results/
-│   ├── motion_intent_analysis.xlsx
-│   ├── Preferences_with_static_distances.xlsx
-│   └── Intentionality.xlsx
-│
-└── scripts/
-    └── *.py
-```
-
----
-
 ## Pipeline Overview
 
 | Step | Script                                 | Purpose                                                     |
