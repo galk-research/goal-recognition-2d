@@ -1,43 +1,188 @@
-# Goal Recognition 2d
+JSON Analysis
 
-Experiments of goal recognition in 2d over Amazon's Mechanical Turk
+This repository contains a full end-to-end pipeline for analyzing motion intentionality and preferences in PPTX-based visual stimuli, combining JSON logs, PowerPoint geometry, and motion-line analysis.
 
-## Installation  
+The pipeline extracts per-group and per-slide data, computes spatial and motion-based distances, and produces final Excel files with Intentionality and Preferences metrics.
 
-Described in [SETUP](SETUP.md) file
+Recommended Folder Structure
+project_root/
+│
+├── raw/
+│   ├── all_groups.json
+│   └── pptx/
+│       └── group 8 - Similarity + Continuation.pptx
+│
+├── groups/
+│   └── group08.json
+│
+├── slides/
+│   └── group08/
+│       ├── svg-group08_slide01.json
+│       ├── svg-group08_slide02.json
+│       └── ...
+│
+├── shapes/
+│   └── pptx_shapes_positions.xlsx
+│
+├── lines/
+│   └── motion_lines_metrics_csv/
+│       ├── svg-group08_slide01.csv
+│       └── ...
+│
+├── distances/
+│   └── csv_location_and_distances/
+│       ├── svg-group08_slide01.csv
+│       └── ...
+│
+├── results/
+│   ├── motion_intent_analysis.xlsx
+│   ├── Preferences_with_static_distances.xlsx
+│   └── Intentionality.xlsx
+│
+└── scripts/
+    └── *.py
 
-## Mturk commands
+Pipeline Overview
+Step              Script           Purpose
+1   extract_json_by_group.py    Extract one group from the large JSON
+2   split_json_by_slide.py  Split group JSON into per-slide JSONs
+3   pptx_shapes_to_svg_positions.py Export PPTX shape geometry
+4   extract_motion_lines.py Extract motion line metrics
+5   computeDistanceFromAllObj.py    Compute distances from dynamic object to all static objects
+6   filter_dynamic_rows.py  Aggregate dynamic rows
+7   add_line_distances_to_intent.py Add distance-to-line metrics
+8   add_static_distances_to_preferences.py  Add static object distances
+9   build_intentionality_from_scratch.py    Compute Intentionality metrics
+10  run_full_pipeline.py    Run everything end-to-end
 
-the file [main.py](main.py) is an command-line tool that manages the expirament
+1. extract_json_by_group.py
+This script extracts all slides of a specific group from a large JSON file.
+The result is a smaller JSON that contains only the slides of that group.
 
-mturk commands starts with:
-```[bash]
-python3 main.py mturk [-p]
-```
-the -p flag specifies production, if specified the command will work on production account
+How to run
+python3 extract_json_by_group.py <group_number> \
+    --input_file <input_file_path> \
+    --output_dir <output_directory>
 
-### to create hits use the command:
- ```[bash]
- python3 main.py mturk [-p] create -t <title> [-d <svg_dir>] [-n <number of slides>] [-l <lifetime in seconds>] [-c <number of hits>]
- ```
-if -c not specified, the program will create the minimum required number of hits to cover all slides(70 hits)
+2. split_json_by_slide.py
+This script takes a group JSON (for one group only) and splits it into one JSON file per slide.
 
+For each key starting with svg-groupNN_slide, the script:
 
-### to review Assignments use the command:
-```[bash]
- python3 main.py mturk [-p] review [--auto]
-```
-if the auto flag specified, the program will automatically accept or reject assignments, otherwise the program will ask the user what to do 
+·       Creates a separate JSON containing only that key.
 
-### to create a csv file with the results use the command:
-```[bash]
- python3 main.py report [--output_path OUTPUT_PATH] [--anchors_file ANCHORS_FILE] [--preview]
-```
-it will create a csv file with the results of the experiment, 
-- if the preview flag specified, the program will create a preview for each slide
-- you can provide a path to the anchors file, the file should be excel file with the following columns: 
+·       Saves it under a group-specific folder, e.g. group03/.
 
-    | Group| Slide| x| y| Radius 
-    | --- | --- | --- | --- | ---
-    | ... | ... | ... | ... | ...
-- if the output_path not specified, the program will create a file in the current directory with the name: results.csv
+How to run
+python3 split_json_by_slide.py <group_number> \
+    --input_file <input_file_path> \
+    --output_dir <output_directory>
+
+3. pptx_shapes_to_svg_positions.py
+This script reads PowerPoint (.pptx) files and exports shape positions into an Excel file.
+
+For each shape on each slide, it computes:
+
+·       Position and size in pixels at 96 DPI (converted from EMU).
+
+·       Center coordinates (center_x_px, center_y_px).
+
+·       A 2D transform matrix (matrix_a … matrix_f).
+
+·       An estimated rotation angle (rotation_deg_est).
+
+It supports:
+
+·       One PPTX file (with --pptx)
+
+·       Or a folder of PPTX files (with --input-dir)
+
+Each PPTX becomes a separate sheet in the output Excel.
+
+How to run
+Option 1 – Single PPTX
+python3 pptx_shapes_to_svg_positions.py \
+    --pptx /path/to/presentation.pptx \
+    --output-dir csv_shapes
+Option 2 – Folder of PPTX files
+python3 pptx_shapes_to_svg_positions.py \
+    --input-dir /path/to/pptx_folder \
+    --output-dir csv_shapes
+
+4. extract_motion_line.py
+Extract motion-line information from PPTX files and compute two line metrics:
+1) main line  - straight line from shape's connector endpoints (if available),
+   otherwise fitted (via PCA) to ALL path points, otherwise bbox-based.
+2) tail line  - straight line defined by the LAST TWO path points.
+
+How to run
+Option 1 – Single PPTX
+python3 extract_motion_lines.py \
+      /full/path/to/presentation.pptx \
+     --output-dir motion_lines_metrics_csv
+Option 2 – Folder of PPTX files
+python3 extract_motion_lines.py \
+    /full/path/to/pptx_folder \
+    --output-dir motion_lines_metrics_csv
+
+5. computeDistanceFromAllObj.py
+Compute distances between the dynamic object and all other objects in each slide.
+
+For every slide in a folder of JSON files:
+- Identifies the dynamic object's motion path (from the JSON data).
+- Calculates two types of distances between the dynamic object and
+  every other object (static + dynamic) on the same slide:
+    * Optimal distance: straight-line distance from the dynamic start point
+      to the target object's center.
+    * Real distance: the actual path length traveled by the dynamic object
+      along its motion trajectory (sum of segment distances).
+
+How to run
+python3 computeDistanceFromAllObj.py /path/to/json_folder \
+     -o csv_location_and_distances \
+      --centers-csv /path/to/pptx_shapes_positions_csv \
+      --pptx-name "group 8 - Similarity + Continuation.pptx" \
+      --exclude-shapes "Oval 8" \
+
+6. filter_dynamic_rows.py
+Filter rows related to the dynamic object from distance CSV files
+and aggregate them into a single Excel file.
+How to run:
+Run on a DIRECTORY of CSV files:
+python3 filter_dynamic_rows.py \
+     /full/path/to/distances_csv \
+    --output-file motion_intent_analysis.xlsx
+
+7. add_line_distances_to_intent.py
+Add two distance-to-line columns to motion_intent_analysis.xlsx:
+- min_dist_line_px : minimal distance from the dynamic final point (end_x, end_y)
+  to any MAIN line in the same slide.
+- min_dist_tail_px : minimal distance from the dynamic final point (end_x, end_y)
+  to any TAIL line in the same slide (only if tail_points_used > 0).
+  How to run:
+  python3 add_line_distances_to_intent.py \
+  --intent-file motion_intent_analysis.xlsx \
+  --lines-file motion_lines_metrics_csv/
+
+8. add_static_distances_to_preferences.py
+Add per-static distance columns to an existing Excel file.
+How to run:
+python3 add_static_distances_to_excel.py \
+    --input-xlsx motion_intent_analysis.xlsx \
+    --csv-dir csv_location_and_distances \
+    --output-xlsx Preferences_with_static_distances.xlsx
+
+9. build_intentionality_from_scratch.py
+Compute Intentionality metrics toward static objects and write them to Excel.
+How to run:
+python3 build_intentionality_from_csv.py \
+    --input-xlsx motion_intent_analysis.xlsx \
+    --csv-dir csv_location_and_distances \
+    --output-xlsx Intentionality.xlsx
+
+10. run_full_pipeline.py
+Run the full pipeline end-to-end.
+How to run:
+python3 run_full_pipeline.py
+
+The output is a merge of the two Excel files: Preferences and Intentionality.

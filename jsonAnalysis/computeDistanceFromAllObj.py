@@ -4,7 +4,7 @@
 Compute distances between the dynamic object and all other objects in each slide.
 
 For every slide in a folder of JSON files:
-- Identifies the dynamic objects motion path (from the JSON data).
+- Identifies the dynamic object's motion path (from the JSON data).
 - Calculates two types of distances between the dynamic object and
   every other object (both static and dynamic) on the same slide:
     * Optimal distance is the straight-line distance from the dynamic
@@ -12,15 +12,18 @@ For every slide in a folder of JSON files:
     * Real distance is the actual path length traveled by the dynamic
       object along its motion trajectory.
 
+Inputs:
+- JSON folder (same as before)
+- OPTIONAL: shape centers from CSV (either a single CSV OR a folder of CSVs)
+  produced by pptx_shapes_positions_csv (one CSV per PPTX)
+
 Outputs:
-- One Excel sheet per slide.
+- One CSV file per slide_id (instead of one Excel sheet per slide).
 - Each row represents the distance between the dynamic object and
   one object on that slide (static or dynamic).
-- Includes coordinates, path details, and source information
-  (whether taken from Excel or JSON).
 
 Requires:
-    pip install pandas openpyxl
+    pip install pandas
 """
 
 import argparse
@@ -29,7 +32,8 @@ import math
 import os
 import re
 from glob import glob
-from typing import Dict, Any, List, Tuple, Optional
+from pathlib import Path
+from typing import Dict, Any, List, Tuple
 
 import pandas as pd
 
@@ -113,18 +117,37 @@ def _axis_path_length(pts, axis):
     return sum(abs(pts[i][axis] - pts[i - 1][axis]) for i in range(1, len(pts)))
 
 
-# ==================== Excel Statics Loader ====================
+# ==================== CSV Statics Loader (replaces Excel) ====================
 
-def _load_statics_from_excel(excel_path, pptx_name, exclude_names, debug=False):
-   
-    xls = pd.ExcelFile(excel_path)
-    dfs = [pd.read_excel(excel_path, sheet_name=s) for s in xls.sheet_names]
-    df_all = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+def _load_statics_from_csv(csv_path_or_dir, pptx_name, exclude_names, debug=False):
+    """
+    Reads shape-center exports from CSV.
+    Supports:
+      - a single CSV file (one PPTX)
+      - a directory containing many CSV files (one CSV per PPTX)
+    """
+    p = Path(csv_path_or_dir)
+
+    if p.is_dir():
+        csv_files = sorted([x for x in p.glob("*.csv") if x.is_file()])
+        if debug:
+            print(f"[DEBUG] Reading {len(csv_files)} CSV files from directory: {p}")
+        dfs = []
+        for f in csv_files:
+            try:
+                dfs.append(pd.read_csv(f))
+            except Exception as e:
+                print(f"[WARN] Skipping CSV '{f}': {e}")
+        df_all = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+    else:
+        if debug:
+            print(f"[DEBUG] Reading single CSV file: {p}")
+        df_all = pd.read_csv(p) if p.exists() else pd.DataFrame()
 
     required = {"pptx_file", "slide_index", "shape_name", "center_x_px", "center_y_px"}
     missing = required - set(map(str, df_all.columns))
     if missing:
-        raise ValueError(f"Excel missing columns: {missing}. Expected {required}")
+        raise ValueError(f"CSV missing columns: {missing}. Expected {required}")
 
     def _norm(s):
         return re.sub(r"\s+", "", str(s).strip().lower())
@@ -132,9 +155,11 @@ def _load_statics_from_excel(excel_path, pptx_name, exclude_names, debug=False):
     if pptx_name:
         q = _norm(pptx_name)
         q_noext = _norm(os.path.splitext(pptx_name)[0])
+
         def _match(cell):
             c = _norm(cell)
             return c == q or c == q_noext or c.endswith(q) or c.endswith(q_noext)
+
         before = len(df_all)
         df_all = df_all[df_all["pptx_file"].apply(_match)]
         if debug:
@@ -192,7 +217,7 @@ def _list_static_points_from_json(final_locs, init_locs):
 
 # ==================== Main Processor ====================
 
-def process_folder(folder, excel_path=None, pptx_name=None, exclude_shapes=None, debug=False):
+def process_folder(folder, centers_csv=None, pptx_name=None, exclude_shapes=None, debug=False):
     exclude_names = []
     if exclude_shapes:
         exclude_names = [s for s in exclude_shapes.split(";") if s.strip()]
@@ -200,8 +225,8 @@ def process_folder(folder, excel_path=None, pptx_name=None, exclude_shapes=None,
         exclude_names = ["Oval 8"]
 
     statics_by_slideindex = {}
-    if excel_path:
-        statics_by_slideindex = _load_statics_from_excel(excel_path, pptx_name, exclude_names, debug)
+    if centers_csv:
+        statics_by_slideindex = _load_statics_from_csv(centers_csv, pptx_name, exclude_names, debug)
 
     per_slide_rows = {}
     json_files = sorted(glob(os.path.join(folder, "*.json")))
@@ -232,7 +257,7 @@ def process_folder(folder, excel_path=None, pptx_name=None, exclude_shapes=None,
                     start = _infer_start_from_moves(moves, rel_moves, init_locs)
                     dyn_end = _get_dynamic_point(final_locs)
 
-                    pts, start_included, end_included = _collect_path_points(start, moves, dyn_end)
+                    pts, _, _ = _collect_path_points(start, moves, dyn_end)
                     pts = _trim_trailing_zero_endpoint(pts)
                     if pts:
                         start = pts[0]
@@ -248,10 +273,8 @@ def process_folder(folder, excel_path=None, pptx_name=None, exclude_shapes=None,
                     if dyn_end is not None:
                         endpoints.append(("dynamic", dyn_end))
 
-                    statics = []
                     if slide_index and slide_index in statics_by_slideindex:
-                        statics = statics_by_slideindex[slide_index]
-                        statics = [(n, p) for n, p in statics if p is not None]
+                        statics = [(n, p) for n, p in statics_by_slideindex[slide_index] if p is not None]
                     else:
                         statics = _list_static_points_from_json(final_locs, init_locs)
 
@@ -271,8 +294,8 @@ def process_folder(folder, excel_path=None, pptx_name=None, exclude_shapes=None,
                             "worker_id": worker_id,
                             "assignment_id": assignment_id,
                             "object_name": obj_name,
-                            "start_x_dinamic_obj": start[0] if start else float("nan"),
-                            "start_y_dinamic_obj": start[1] if start else float("nan"),
+                            "start_x_dynamic_obj": start[0] if start else float("nan"),
+                            "start_y_dynamic_obj": start[1] if start else float("nan"),
                             "end_x": ex,
                             "end_y": ey,
                             "moves_count": len(moves) if isinstance(moves, list) else 0,
@@ -290,28 +313,37 @@ def process_folder(folder, excel_path=None, pptx_name=None, exclude_shapes=None,
     return all_rows, per_slide
 
 
-# ==================== Excel Writer ====================
+# ==================== CSV Writer (replaces Excel Writer) ====================
 
-def write_excel(out_path, all_rows_df, per_slide):
-    if all_rows_df.empty:
+def write_csvs(out_dir, per_slide):
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if not per_slide:
         print("[WARN] No data to write.")
         return
-    with pd.ExcelWriter(out_path, engine="openpyxl") as xl:
-        for slide_id, df in per_slide.items():
-            df_out = df.copy()
-            desired = [
-                "slide_id", "slide_index", "worker_id", "assignment_id",
-                "object_name",
-                "moves_count",
-                "start_x_dinamic_obj", "start_y_dinamic_obj", "end_x", "end_y",
-                "optimal_2d", "real_2d",
-                "optimal_x", "real_x",
-                "optimal_y", "real_y",
-            ]
-            cols = [c for c in desired if c in df_out.columns]
-            df_out.sort_values(["worker_id", "assignment_id", "object_name"], inplace=True)
-            sheet_name = (str(slide_id)[:28] or "slide")
-            df_out.to_excel(xl, sheet_name=sheet_name, index=False, columns=cols)
+
+    desired = [
+        "slide_id", "slide_index", "worker_id", "assignment_id",
+        "object_name",
+        "moves_count",
+        "start_x_dynamic_obj", "start_y_dynamic_obj", "end_x", "end_y",
+        "optimal_2d", "real_2d",
+        "optimal_x", "real_x",
+        "optimal_y", "real_y",
+    ]
+
+    for slide_id, df in per_slide.items():
+        df_out = df.copy()
+        cols = [c for c in desired if c in df_out.columns]
+        df_out.sort_values(["worker_id", "assignment_id", "object_name"], inplace=True)
+
+        safe_name = re.sub(r"[^A-Za-z0-9_\-]+", "_", str(slide_id)).strip("_")
+        if not safe_name:
+            safe_name = "slide"
+
+        out_path = out_dir / f"{safe_name}.csv"
+        df_out.to_csv(out_path, index=False, encoding="utf-8", columns=cols)
 
 
 # ==================== main ====================
@@ -319,22 +351,25 @@ def write_excel(out_path, all_rows_df, per_slide):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("folder", help="Folder containing slide JSON files")
-    parser.add_argument("-o", "--output", default="distancesFromAllObj.xlsx")
-    parser.add_argument("--excel", help="Excel file with shape centers")
-    parser.add_argument("--pptx-name", help="Filter pptx_file in Excel")
+    parser.add_argument("-o", "--output-dir", default="distances_csv", help="Output directory for per-slide CSV files")
+
+    # Replaces --excel
+    parser.add_argument("--centers-csv", help="CSV file OR directory of CSV files with shape centers")
+    parser.add_argument("--pptx-name", help="Filter pptx_file in centers CSVs")
     parser.add_argument("--exclude-shapes", default="Oval 8")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
-    all_df, per_slide = process_folder(
+    _, per_slide = process_folder(
         args.folder,
-        excel_path=args.excel,
+        centers_csv=args.centers_csv,
         pptx_name=args.pptx_name,
         exclude_shapes=args.exclude_shapes,
         debug=args.debug,
     )
-    write_excel(args.output, all_df, per_slide)
-    print(f"Done. Wrote: {args.output}")
+
+    write_csvs(args.output_dir, per_slide)
+    print(f"Done. Wrote per-slide CSVs to: {args.output_dir}")
 
 
 if __name__ == "__main__":
@@ -344,55 +379,23 @@ if __name__ == "__main__":
 #############
 # HOW TO RUN:
 #
-#   run - python3 name_of_file.py /path/to/json_folder \
-#      -o name_of_file.xlsx \
-#      --excel obj_positions.xlsx \
+#   python3 computeDistanceFromAllObj.py /path/to/json_folder \
+#      -o csv_location_and_distances \
+#      --centers-csv /path/to/pptx_shapes_positions_csv \
 #      --pptx-name "group 8 - Similarity + Continuation.pptx" \
-#      --exclude-shapes "Oval 8" 
+#      --exclude-shapes "Oval 8" \
+#      --debug
 #
-# Explanation of Arguments:
-#   /path/to/json_folder
-#       Path to the folder containing all slide-JSON files.
-#       The script will process every *.json file inside this folder.
+# Explanation:
+#   -o / --output-dir
+#       Output directory. You will get one CSV per slide_id inside this folder.
 #
-#   -o name_of_file.xlsx   (or --output name_of_file.xlsx)
-#       Name (or full path) of the Excel file to create.
-#
-#   --excel obj_positions.xlsx
-#       Path to the Excel file generated from PowerPoint
-#       (via pptx_shapes_to_svg_positions.py).
-#       This file provides the center positions (in SVG pixel units)
-#       of all static shapes on each slide.
-#
-#   --pptx-name "group 8 - Similarity + Continuation.pptx"
-#       Filters rows from the Excel file so that only shapes belonging
-#       to this specific PowerPoint presentation are used.
-#       The filter is lenient: it works with or without the “.pptx”
-#       extension and ignores spaces/case differences.
-#       If you only have one presentation in the Excel file,
-#       you can safely omit this argument.
-#
-#   --exclude-shapes "Oval 8"
-#       Names of shapes to exclude from the static set.
-#       Multiple names can be separated by semicolons, e.g.
-#       The match is case-insensitive and ignores extra spaces.
-#       Oval 8 is the dynamic location before the animation starts.
-#
-#   --debug
-#       Prints detailed log information during execution:
-#       number of JSON files found, slides matched, shapes loaded
-#       from Excel, and other helpful diagnostics.
-#       Recommended for the first run.
+#   --centers-csv
+#       Either:
+#         (1) a single CSV file (one PPTX), OR
+#         (2) a directory containing many CSV files (one CSV per PPTX).
+#       These CSVs are produced by the updated PPTX exporter.
 #
 # OUTPUT:
-#   - One Excel sheet per slide.
-#   - Each row represents the distance between the dynamic object
-#     and one shape on that slide (static or dynamic).
-#   - Columns include:
-#       object_name — "dynamic" or the static shape name
-#       start_x, start_y — dynamic object’s start point (from JSON)
-#       end_x, end_y — target shape center (from Excel or JSON)
-#       optimal_* — straight-line distance from start→end
-#       real_* — total path length actually traveled by the dynamic object
-
+#   - One CSV per slide (instead of an Excel with sheets).
 #############

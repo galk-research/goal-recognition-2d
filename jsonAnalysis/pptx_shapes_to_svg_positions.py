@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 
 """
-Export shape positions to Excel as SVG-space (px, 96 DPI) coordinates
+Export shape positions to CSV as SVG-space (px, 96 DPI) coordinates.
+Output mode (Option A): one CSV per PPTX file.
 Supports both: --pptx single file OR --input-dir folder of many PPTX files.
 """
 
 import argparse
 import os
 import math
+from pathlib import Path
 from typing import Tuple, List, Dict
 
 import numpy as np
@@ -138,10 +140,10 @@ def collect_pptx_files(input_dir: str) -> List[str]:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Export PPTX shape positions to Excel")
+    ap = argparse.ArgumentParser(description="Export PPTX shape positions to CSV (one CSV per PPTX)")
     ap.add_argument("--pptx", help="Single PPTX file")
     ap.add_argument("--input-dir", help="Folder containing PPTX files")
-    ap.add_argument("--output-xlsx", default="pptx_shapes_positions.xlsx", help="Output Excel path")
+    ap.add_argument("--output-dir", default="pptx_shapes_positions_csv", help="Output directory for CSV files")
     args = ap.parse_args()
 
     if not args.pptx and not args.input_dir:
@@ -158,36 +160,40 @@ def main():
     if not pptx_files:
         raise SystemExit("No .pptx files found")
 
-    with pd.ExcelWriter(args.output_xlsx, engine="openpyxl") as writer:
-        for pptx_path in sorted(pptx_files):
-            print(f"Processing: {os.path.basename(pptx_path)}")
-            try:
-                df = process_pptx(pptx_path)
-            except PackageNotFoundError as e:
-                print(f"Skipping invalid PPTX ({pptx_path}): {e}")
-                continue
-            sheet = os.path.splitext(os.path.basename(pptx_path))[0][:31]
-            df.to_excel(writer, index=False, sheet_name=sheet)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\nSaved to {args.output_xlsx}")
+    for pptx_path in sorted(pptx_files):
+        print(f"Processing: {os.path.basename(pptx_path)}")
+        try:
+            df = process_pptx(pptx_path)
+        except PackageNotFoundError as e:
+            print(f"Skipping invalid PPTX ({pptx_path}): {e}")
+            continue
+
+        out_csv = output_dir / (Path(pptx_path).stem + ".csv")
+        df.to_csv(out_csv, index=False, encoding="utf-8")
+        print(f"  -> {out_csv}")
+
+    print(f"\nSaved CSV files to: {output_dir}")
 
 
 if __name__ == "__main__":
     main()
 
 
-    #############
+#############
 # HOW TO RUN:
-
+#
 #   1) Single PPTX file:
-#           python3 pptx_shapes_to_svg_positions.py \
-#           --pptx /path/to/pptx \
-#           --output-xlsx obj_positions.xlsx
+#       python3 pptx_shapes_to_svg_positions.py \
+#           --pptx /path/to/presentation.pptx \
+#           --output-dir csv_shapes
 #
 #   2) A folder containing many PPTX files:
 #       python3 pptx_shapes_to_svg_positions.py \
 #           --input-dir /path/to/folder_with_pptx \
-#           --output-xlsx obj_positions.xlsx
+#           --output-dir csv_shapes
 #
 # Explanation of Arguments:
 #   --pptx /path/to/presentation.pptx
@@ -199,9 +205,9 @@ if __name__ == "__main__":
 #       the folder and process every valid PPTX (skipping "~$..." temp files).
 #       Use this OR --pptx (not both).
 #
-#   --output-xlsx
-#       Path/name of the Excel file to write (default: obj_positions.xlsx).
-#       Each processed PPTX gets its own sheet (sheet name = file name, up to 31 chars)
+#   --output-dir
+#       Output directory where CSV files will be written (default: pptx_shapes_positions_csv).
+#       Each processed PPTX gets its own CSV file (file name = PPTX name + .csv).
 #
 # Notes:
 #   - Coordinates are converted to SVG-space pixels at 96 DPI
@@ -210,7 +216,7 @@ if __name__ == "__main__":
 #     (scale, rotation, flip, translate) are applied to child shapes.
 #
 # OUTPUT:
-#   - One Excel sheet per PPTX file.
+#   - One CSV per PPTX file.
 #   - Each row is a shape on a slide, with coordinates in SVG pixel units (96 DPI).
 #   - Columns include:
 #       pptx_file         — the source PPTX filename
@@ -223,4 +229,3 @@ if __name__ == "__main__":
 #       matrix_a..matrix_f – SVG transform matrix components (a,b,c,d,e,f)
 #       rotation_deg_est – estimated rotation (degrees) derived from the matrix
 #############
-

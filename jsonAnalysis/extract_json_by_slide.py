@@ -3,8 +3,8 @@ import json
 import os
 import argparse
 
- """
-    Splits a JSON file for a specific group into individual files per slide.
+"""
+ Splits a JSON file for a specific group into individual files per slide.
 
     Parameters:
     - input_file (str): Path to the input JSON file for the group.
