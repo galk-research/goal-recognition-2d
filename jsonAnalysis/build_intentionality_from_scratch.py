@@ -221,20 +221,6 @@ if __name__ == "__main__":
     #############
 # HOW TO RUN:
 #
-# INPUT:
-#   1) Excel file with dynamic-only rows
-#      (e.g. motion_intent_analysis.xlsx)
-#   2) Directory with per-slide CSV files
-#      (one CSV per slide_id, named <slide_id>.csv)
-#
-# OUTPUT:
-#   - A new Excel file containing Intentionality metrics
-#   - One sheet per slide + an ERRORS sheet
-#
-# ------------------------------------------------------------
-#
-# BASIC USAGE:
-#
 #   python3 build_intentionality_from_csv.py \
 #     --input-xlsx motion_intent_analysis.xlsx \
 #     --csv-dir csv_location_and_distances \
