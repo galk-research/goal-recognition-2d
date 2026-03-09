@@ -1,5 +1,5 @@
 # JSON Analysis
-The JsonAnalysis folder contains a full end-to-end pipeline for analyzing motion intentionality and preferences in PPTX-based visual stimuli, combining JSON logs, PowerPoint geometry, and motion-line analysis.
+The jsonAnalysis folder contains a full end-to-end pipeline for analyzing motion intentionality and preferences in PPTX-based visual stimuli, combining JSON logs, PowerPoint geometry, and motion-line analysis.
 
 The pipeline extracts per-group and per-slide data, computes spatial and motion-based distances, and produces final Excel files with Intentionality and Preferences metrics.
 
