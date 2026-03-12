@@ -443,13 +443,18 @@ def main():
 
     # 7) add_line_distances_to_intent.py
     # (writes back into the same file if your script supports overwriting via --output-file)
-    run_step(
-        ["python3", "add_line_distances_to_intent.py",
-         "--intent-file", str(motion_intent_xlsx),
-         "--lines-file", str(motion_lines_dir),
-         "--output-file", str(motion_intent_xlsx)],
-        "add_line_distances_to_intent.py"
-    )
+    line_csvs = list(motion_lines_dir.glob("*.csv"))
+
+    if line_csvs:
+        run_step(
+            ["python3", "add_line_distances_to_intent.py",
+             "--intent-file", str(motion_intent_xlsx),
+             "--lines-file", str(motion_lines_dir),
+             "--output-file", str(motion_intent_xlsx)],
+            "add_line_distances_to_intent.py"
+     )
+    else:
+        print("\n[WARN] No motion line CSV files found. Skipping add_line_distances_to_intent.py")
 
     # 8) add_static_distances_to_preferences.py  -> Preferences excel
     run_step(
