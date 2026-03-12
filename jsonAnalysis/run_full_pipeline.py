@@ -156,9 +156,9 @@ def run_step(cmd: List[str], name: str):
     print("  " + " ".join(cmd))
     res = subprocess.run(cmd)
     if res.returncode != 0:
-        print(f"\n❌ FAILED: {name}")
+        print(f"\n FAILED: {name}")
         sys.exit(res.returncode)
-    print(f"✅ DONE: {name}")
+    print(f"DONE: {name}")
 
 
 def ask_path(prompt: str) -> Path:
@@ -314,7 +314,7 @@ def merge_excels_by_sheet(
         )
         rep_df.to_excel(w, sheet_name=safe_sheet_name("MERGE_REPORT"), index=False)
 
-    print(f"\n✅ Merged workbook created: {out_xlsx}")
+    print(f"\n Merged workbook created: {out_xlsx}")
     print("   (See MERGE_REPORT sheet for join keys / status per sheet.)")
 
 
